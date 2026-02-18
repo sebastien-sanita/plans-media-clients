@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Le Drone et Vous — Stratégie Media</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>body { margin: 0; }</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+import { useState, useMemo } from "react";
+
+// Poids relatifs des campagnes pour la répartition proportionnelle
+const GOOGLE_WEIGHTS = [
+  { id: 1,    name: "Démoussage Toiture",    icon: "🏠", w: 25, minDay: 8 },
+  { id: 2,    name: "Nettoyage Façade",      icon: "🏗️", w: 14, minDay: 5 },
+  { id: 3,    name: "Nettoyage Bardage",     icon: "🏭", w: 12, minDay: 4 },
+  { id: 4,    name: "Inspection Thermo.",    icon: "🌡️", w: 9,  minDay: 3 },
+  { id: 5,    name: "Campagne Marque",       icon: "🎖️", w: 5,  minDay: 3 },
+];
+const META_WEIGHTS = [
+  { id: "m1", name: "Notoriété Locale",      icon: "📡", w: 12, minDay: 3 },
+  { id: "m2", name: "Génération de Leads",   icon: "🎯", w: 18, minDay: 5 },
+  { id: "m3", name: "Prospection B2B",       icon: "🏭", w: 11, minDay: 3 },
+  { id: "m4", name: "Remarketing",           icon: "🔄", w: 6,  minDay: 2 },
+];
+const GOOGLE_SHARE = 0.55;
+const META_SHARE   = 0.45;
+
+function computeAlloc(totalMonthly, weights, share) {
+  const channelMonthly = totalMonthly * share;
+  const totalW = weights.reduce((s, c) => s + c.w, 0);
+  return weights.map(c => {
+    const daily   = Math.round((channelMonthly / 30) * (c.w / totalW));
+    const monthly = Math.round(channelMonthly * (c.w / totalW));
+    return { ...c, daily, monthly, active: daily >= c.minDay };
+  });
+}
+
+const CAMPAIGNS_GOOGLE = [
+  {
+    id: 1, name: "Démoussage Toiture", audience: "Particuliers",
+    budgetReco: "20 – 25 €/j", priority: "🔴 Priorité 1",
+    url: "/demoussage-toiture", color: "from-orange-500 to-red-500", icon: "🏠",
+    angle: "Sans risque de chute ni piétinement des tuiles",
+    groups: [
+      { name: "Démoussage toiture – intention directe", keywords: ["démoussage toiture", "démoussage toit par drone", "traitement mousse toiture", "démoussage toiture prix"] },
+      { name: "Nettoyage toiture – haute intention", keywords: ["nettoyage toiture", "nettoyage mousse toiture", "drone nettoyage toiture", "société nettoyage toiture"] },
+      { name: "Traitement anti-mousse", keywords: ["traitement anti-mousse toit", "traitement toiture drone", "comment enlever mousse toit"] },
+    ],
+    headlines: ["Démoussage Toiture par Drone", "{Keyword} – Devis Gratuit", "Sans Risque de Chute ni Piétinement", "Intervention sous 48h", "2-3x Moins Cher que le Traditionnel", "Drone Certifié – Assurance RC Pro"],
+    descriptions: ["Notre drone démousse votre toiture sans que personne ne monte dessus. Rapide, économique, éco-responsable. Devis gratuit.", "Fini la mousse qui abîme vos tuiles. Intervention drone certifiée, sans risque. Télépilotes professionnels. Devis offert en 24h."],
+  },
+  {
+    id: 2, name: "Nettoyage Façade", audience: "Particuliers",
+    budgetReco: "12 – 15 €/j", priority: "🟠 Priorité 2",
+    url: "/nettoyage-facade", color: "from-blue-500 to-cyan-500", icon: "🏗️",
+    angle: "Façade éclatante sans échafaudage",
+    groups: [
+      { name: "Nettoyage façade maison", keywords: ["nettoyage facade maison", "nettoyage facade drone", "nettoyage facade sans échafaudage", "prix nettoyage facade"] },
+      { name: "Ravalement alternatif", keywords: ["alternative ravalement façade", "façade verte algues nettoyage", "nettoyage façade basse pression"] },
+    ],
+    headlines: ["Nettoyage Façade par Drone", "{Keyword} sans Échafaudage", "Façade Éclatante sans Échelle", "Devis Gratuit – Intervention 48h", "Tous Types de Façades"],
+    descriptions: ["Votre façade nettoyée par drone : plus rapide, plus sûr, sans dérangement. Résultat durable. Demandez votre devis gratuit maintenant.", "Enduit, pierre, crépis – nous traitons tous les types de façades. Intervention certifiée, assurée, éco-responsable."],
+  },
+  {
+    id: 3, name: "Nettoyage Bardage", audience: "Professionnels / B2B",
+    budgetReco: "10 – 15 €/j", priority: "🟠 Priorité 3",
+    url: "/nettoyage-bardage", color: "from-slate-600 to-slate-800", icon: "🏭",
+    angle: "Châteaux, entrepôts, cuves, citernes — sans nacelle",
+    groups: [
+      { name: "Nettoyage bardage", keywords: ["nettoyage bardage", "nettoyage bardage métallique drone", "entretien bardage bâtiment industriel", "nettoyage bardage entrepôt"] },
+      { name: "Bâtiments spécifiques", keywords: ["nettoyage hangar drone", "nettoyage façade industrielle", "nettoyage citernes drone", "nettoyage cuves industrielles"] },
+    ],
+    headlines: ["Nettoyage Bardage par Drone", "Sans Interruption de Votre Activité", "Solution Sans Nacelle ni Échafaudage", "Drone et Vous – Certifiés DGAC", "Devis Professionnel Gratuit"],
+    descriptions: ["Votre bardage nettoyé sans interruption d'activité. Notre drone certifié DGAC intervient sur site, sans nacelle. Devis gratuit.", "Châteaux, entrepôts, cuves, citernes : 2-3x moins cher qu'une nacelle. Certifiés DGAC."],
+  },
+  {
+    id: 4, name: "Inspection Thermographique", audience: "Particuliers & Pro",
+    budgetReco: "8 – 10 €/j", priority: "🟡 Démarrage progressif",
+    url: "/inspection-thermographique", color: "from-purple-500 to-indigo-600", icon: "🌡️",
+    angle: "Détectez déperditions de chaleur et infiltrations",
+    groups: [
+      { name: "Inspection thermique", keywords: ["inspection thermographique bâtiment", "inspection thermique drone", "détection déperdition chaleur", "thermographie bâtiment drone"] },
+      { name: "Économies d'énergie", keywords: ["bilan thermique maison drone", "infiltration eau toiture détection", "fuite chaleur maison", "réduire factures énergie"] },
+    ],
+    headlines: ["Inspection Thermique par Drone", "Détectez vos Déperditions de Chaleur", "Réduisez vos Factures d'Énergie", "Rapport Détaillé en 24h", "Drone Thermique Certifié"],
+    descriptions: ["Notre drone thermique détecte vos pertes de chaleur invisibles à l'œil nu. Rapport complet en 24h. Devis gratuit.", "Infiltrations d'eau, déperditions thermiques, ponts froids : tout est détecté sans travaux préalables."],
+  },
+  {
+    id: 5, name: "Campagne Marque", audience: "Notoriété",
+    budgetReco: "5 €/j", priority: "🔴 Immédiat",
+    url: "/", color: "from-emerald-500 to-teal-500", icon: "🎖️",
+    angle: "Protéger la marque — conversion actuelle à 4,35% (meilleure perf historique)",
+    groups: [{ name: "Termes marque", keywords: ["le drone et vous", "drone et vous", "ledroneetvous", "drone et vous brangues"] }],
+    headlines: ["Le Drone et Vous – Site Officiel", "Télépilotes Certifiés DGAC Isère", "Nettoyage Drone – Devis Gratuit"],
+    descriptions: ["Site officiel de Le Drone et Vous. Services de nettoyage et inspection par drone en Auvergne-Rhône-Alpes. Devis sous 24h."],
+  },
+];
+
+const CAMPAIGNS_META = [
+  {
+    id: "m1", name: "Notoriété Locale — Particuliers", objective: "Awareness / Reach",
+    budgetReco: "10 – 15 €/j", icon: "📡", color: "from-blue-400 to-blue-600",
+    format: "Vidéo courte (15-30s) + Carrousel avant/après",
+    audience: "Particuliers 35-65 ans, propriétaires, rayon 100km autour de Brangues",
+    angle: "Découverte du service — montrer le drone en action sur une toiture",
+    creatives: ["Vidéo time-lapse : toiture encrassée → toiture propre (effet choc visuel)", "Carrousel avant/après : 3 chantiers (toiture, façade, bardage)", "Réel : vue drone en vol au-dessus d'une maison + résultat final"],
+    copy: "Votre toiture est couverte de mousse ? Notre drone s'en occupe — sans que personne ne monte dessus. Rapide, sécurisé, 2-3x moins cher. 👇 Demandez votre devis gratuit.",
+    cta: "Demander un devis",
+  },
+  {
+    id: "m2", name: "Génération de Leads — Démoussage", objective: "Lead Generation",
+    budgetReco: "15 – 20 €/j", icon: "🎯", color: "from-orange-400 to-red-500",
+    format: "Lead Ads natif Facebook/Instagram + Formulaire pré-rempli",
+    audience: "Propriétaires 40-65 ans, intérêts : maison, jardinage, bricolage — rayon 80km",
+    angle: "Offre directe : devis gratuit en 2 minutes",
+    creatives: ["Visuel statique : photo avant/après toiture avec prix barré", "Lead form : Prénom, commune, type de toit, surface estimée → réponse sous 24h", "Vidéo 30s : drone en vol, voix off 'Vous aussi, faites nettoyer votre toit par drone'"],
+    copy: "☀️ Printemps = toit plein de mousse ? Faites intervenir notre drone. Devis gratuit, réponse en 24h, intervention en Auvergne-Rhône-Alpes. Aucun risque, aucun échafaudage.",
+    cta: "Obtenir mon devis",
+  },
+  {
+    id: "m3", name: "Prospection B2B — Bardage & Inspection", objective: "Trafic / Leads Pro",
+    budgetReco: "10 – 12 €/j", icon: "🏭", color: "from-slate-500 to-slate-700",
+    format: "Image + Carrousel professionnel, ciblage Facebook Business",
+    audience: "Dirigeants PME, responsables maintenance, industrie, logistique — rayon 150km",
+    angle: "ROI et gain de temps — argument économique fort vs nacelle/échafaudage",
+    creatives: ["Infographie : coût nacelle vs drone (économie de 50-60%)", "Carrousel : 4 types de bâtiments (entrepôt, château, hangar, cuve) + résultat", "Vidéo LinkedIn-style : intervention sur site industriel filmée par drone"],
+    copy: "🏭 Votre bardage a besoin d'entretien ? Notre drone intervient sans interrompre votre activité. Pas de nacelle, pas d'échafaudage, devis pro sous 24h. Certifiés DGAC.",
+    cta: "Demande de devis pro",
+  },
+  {
+    id: "m4", name: "Remarketing — Visiteurs Non Convertis", objective: "Retargeting",
+    budgetReco: "5 – 8 €/j", icon: "🔄", color: "from-purple-500 to-purple-700",
+    format: "Visuel dynamique / Carrousel services",
+    audience: "Visiteurs du site (pixel Meta) n'ayant pas soumis de devis — 30 jours glissants",
+    angle: "Relance douce avec réassurance et urgence saisonnière",
+    creatives: ["Visuel avec testimonial client : 'Très satisfait, résultat impeccable en 2h'", "Carrousel : les 4 services + CTA devis gratuit sur chaque carte", "Animation : countdown saisonnier 'Le printemps arrive — anticipez l'entretien'"],
+    copy: "Vous avez consulté nos services mais n'avez pas encore demandé votre devis ? C'est le moment — la saison approche et les créneaux se remplissent vite. 🚁",
+    cta: "Reprendre ma demande",
+  },
+];
+
+const PHASES = [
+  { phase: "Phase 1", label: "Lancement", period: "J0 → J+30", color: "bg-red-500", actions: ["Mise en ligne du nouveau site", "Lancement campagnes Marque + Toiture", "Installation pixel Meta + events GA4", "Lancement Meta Notoriété locale"] },
+  { phase: "Phase 2", label: "Optimisation", period: "J+30 → J+90", color: "bg-orange-500", actions: ["Activation CPA cibles (15-20 conv.)", "Lancement Meta Lead Ads démoussage", "Suppression mots-clés CTR < 3%", "Analyse search terms — ajout mots-clés"] },
+  { phase: "Phase 3", label: "Scaling", period: "J+90+", color: "bg-emerald-500", actions: ["Test Performance Max (toiture + façade)", "Remarketing Display + Meta retargeting", "Campagne Meta B2B bardage", "Ajustements saisonniers (printemps/automne)"] },
+];
+
+const BUDGET_PRESETS = [
+  { label: "Démarrage", value: 1000 },
+  { label: "Croissance", value: 1500 },
+  { label: "Accélération", value: 2000 },
+  { label: "Full", value: 2700 },
+];
+
+const StatusBadge = ({ status }) => {
+  const map   = { good: "bg-emerald-100 text-emerald-700", warn: "bg-yellow-100 text-yellow-700", bad: "bg-red-100 text-red-700" };
+  const label = { good: "✅ OK", warn: "⚠️ À optimiser", bad: "❌ Critique" };
+  return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[status]}`}>{label[status]}</span>;
+};
+
+function BudgetWidget({ budget, setBudget }) {
+  return (
+    <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-xl">
+      <div className="flex flex-wrap items-start justify-between gap-6 mb-5">
+        <div>
+          <div className="text-xs font-semibold text-indigo-300 uppercase tracking-widest mb-1">Budget mensuel total</div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-5xl font-black tracking-tight">{budget.toLocaleString("fr-FR")} €</span>
+            <span className="text-base text-indigo-400">/ mois</span>
+          </div>
+          <div className="text-sm text-indigo-400 mt-1">soit ~{Math.round(budget / 30)} € / jour</div>
+        </div>
+        <div className="flex items-center gap-5">
+          <div className="text-center">
+            <div className="text-xs text-indigo-300 mb-1">🔍 Google Ads</div>
+            <div className="text-3xl font-extrabold text-white">{Math.round(budget * GOOGLE_SHARE).toLocaleString("fr-FR")} €</div>
+            <div className="text-xs text-indigo-400">~{Math.round(budget * GOOGLE_SHARE / 30)} €/j</div>
+          </div>
+          <div className="w-px h-14 bg-white/20"></div>
+          <div className="text-center">
+            <div className="text-xs text-blue-300 mb-1">📘 Meta Ads</div>
+            <div className="text-3xl font-extrabold text-white">{Math.round(budget * META_SHARE).toLocaleString("fr-FR")} €</div>
+            <div className="text-xs text-blue-400">~{Math.round(budget * META_SHARE / 30)} €/j</div>
+          </div>
+        </div>
+      </div>
+
+      {budget < 1500 && (
+        <div className="text-xs text-amber-300 bg-amber-500/20 border border-amber-400/30 px-4 py-2 rounded-xl mb-4">
+          ⚠️ À ce budget certaines campagnes seront mises en pause — les priorités 1 et la marque restent actives.
+        </div>
+      )}
+
+      <input
+        type="range" min="500" max="3000" step="50"
+        value={budget}
+        onChange={e => setBudget(Number(e.target.value))}
+        className="w-full h-2 rounded-full appearance-none cursor-pointer mb-1"
+        style={{ accentColor: "#818cf8" }}
+      />
+      <div className="flex justify-between text-xs text-indigo-500 mb-5">
+        <span>500 €</span><span>3 000 €</span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2">
+        {BUDGET_PRESETS.map(p => (
+          <button
+            key={p.value}
+            onClick={() => setBudget(p.value)}
+            className={`rounded-xl py-2 px-2 text-center transition-all border ${budget === p.value ? "bg-indigo-500 border-indigo-400 text-white shadow-lg scale-105" : "bg-white/10 border-white/20 text-indigo-200 hover:bg-white/20"}`}
+          >
+            <div className="font-bold text-sm">{p.label}</div>
+            <div className="text-xs opacity-70">{p.value.toLocaleString("fr-FR")} €</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BudgetBadge({ monthly, daily, bgClass, textClass }) {
+  return (
+    <div className={`${bgClass} text-white rounded-2xl px-5 py-3 text-center shadow-md flex-shrink-0`}>
+      <div className={`text-xs font-semibold ${textClass} uppercase tracking-wide mb-0.5`}>Budget mensuel</div>
+      <div className="text-3xl font-extrabold leading-tight">{monthly.toLocaleString("fr-FR")} €</div>
+      <div className={`text-xs ${textClass} mt-0.5`}>~{daily} € / jour</div>
+    </div>
+  );
+}
+
+const CampaignCard = ({ camp, type, allocDay, allocMonth, active }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`border rounded-2xl overflow-hidden shadow-sm transition-shadow ${active ? "border-slate-200 hover:shadow-md" : "border-slate-200 opacity-55"}`}>
+      <div className={`bg-gradient-to-r ${camp.color} p-4 text-white`}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{camp.icon}</span>
+            <div>
+              <div className="font-bold text-lg leading-tight">{camp.name}</div>
+              <div className="text-white/80 text-xs">{camp.audience}</div>
+            </div>
+          </div>
+          <div className="text-right flex-shrink-0">
+            {active ? (
+              <>
+                <div className="font-bold text-xl">{allocDay} €/j</div>
+                <div className="text-white/70 text-xs">{allocMonth} €/mois</div>
+              </>
+            ) : (
+              <div className="bg-black/30 text-white/80 text-xs px-2 py-1 rounded-full font-semibold mt-1">⏸ En pause</div>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="p-4 bg-white">
+        {!active && (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            Budget insuffisant à ce niveau — à activer en augmentant le budget total.
+          </div>
+        )}
+        <p className="text-slate-600 text-sm italic mb-2">"{camp.angle}"</p>
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+          {type === "google" && <div className="text-xs text-slate-400">Landing : <span className="font-mono bg-slate-100 px-1 rounded">{camp.url}</span></div>}
+          {type === "meta" && <div className="text-xs text-slate-500">{camp.objective}</div>}
+          <div className="text-xs text-slate-400">Recommandé : {camp.budgetReco}</div>
+        </div>
+        <button onClick={() => setOpen(!open)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors">
+          {open ? "▲ Réduire" : "▼ Voir le détail"}
+        </button>
+        {open && (
+          <div className="mt-4 space-y-4">
+            {type === "google" && (
+              <>
+                <div>
+                  <div className="text-xs font-bold text-slate-700 mb-2">Groupes d'annonces & mots-clés</div>
+                  {camp.groups.map((g, i) => (
+                    <div key={i} className="mb-3">
+                      <div className="text-xs font-semibold text-slate-600 mb-1">📁 {g.name}</div>
+                      <div className="flex flex-wrap gap-1">{g.keywords.map((k, j) => <span key={j} className="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded-full">{k}</span>)}</div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-700 mb-2">Titres RSA</div>
+                  <div className="flex flex-wrap gap-1">{camp.headlines.map((h, i) => <span key={i} className="bg-slate-100 text-slate-700 text-xs px-2 py-0.5 rounded">{h}</span>)}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-700 mb-2">Descriptions</div>
+                  {camp.descriptions.map((d, i) => <p key={i} className="text-xs text-slate-600 bg-slate-50 rounded p-2 mb-1">"{d}"</p>)}
+                </div>
+              </>
+            )}
+            {type === "meta" && (
+              <>
+                <div>
+                  <div className="text-xs font-bold text-slate-700 mb-1">Format & audience</div>
+                  <div className="text-xs text-slate-500 mb-1">{camp.format}</div>
+                  <div className="text-xs text-slate-500">{camp.audience}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-700 mb-2">Créatifs recommandés</div>
+                  <ul className="space-y-1">{camp.creatives.map((c, i) => <li key={i} className="text-xs text-slate-600 flex gap-2"><span className="flex-shrink-0">•</span><span>{c}</span></li>)}</ul>
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-slate-700 mb-1">Copy principal</div>
+                  <p className="text-xs text-slate-600 bg-blue-50 rounded p-2">{camp.copy}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-700">CTA :</span>
+                  <span className="bg-blue-600 text-white text-xs px-3 py-1 rounded-full font-semibold">{camp.cta}</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  const [activeNav, setActiveNav] = useState("diagnostic");
+  const [budget, setBudget] = useState(1000);
+
+  const googleAlloc   = useMemo(() => computeAlloc(budget, GOOGLE_WEIGHTS, GOOGLE_SHARE), [budget]);
+  const metaAlloc     = useMemo(() => computeAlloc(budget, META_WEIGHTS,   META_SHARE),   [budget]);
+  const googleMonthly = Math.round(budget * GOOGLE_SHARE);
+  const metaMonthly   = Math.round(budget * META_SHARE);
+  const googleDaily   = Math.round(googleMonthly / 30);
+  const metaDaily     = Math.round(metaMonthly / 30);
+
+  const navItems = [
+    { id: "diagnostic", label: "📊 Diagnostic" },
+    { id: "google",     label: "🔍 Google Ads" },
+    { id: "meta",       label: "📘 Meta Ads" },
+    { id: "budget",     label: "💶 Budget & Phases" },
+    { id: "kpis",       label: "🎯 KPIs" },
+  ];
+
+  const scrollTo = (id) => {
+    setActiveNav(id);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+
+      {/* Header */}
+      <div className="bg-gradient-to-r from-slate-900 to-indigo-900 text-white px-6 py-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-4xl">🚁</span>
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-tight">Le Drone et Vous</h1>
+              <p className="text-indigo-300 text-sm mt-0.5">Stratégie Media Recommandée — Google Ads & Meta Ads</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <span className="bg-white/10 text-xs px-3 py-1 rounded-full">📍 Brangues (Isère) — Rayon 100-150km</span>
+            <span className="bg-white/10 text-xs px-3 py-1 rounded-full">🗓️ Basée sur Google Ads + GA4 2025</span>
+            <span className="bg-white/10 text-xs px-3 py-1 rounded-full">🆕 Alignée sur le nouveau site</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Budget Widget */}
+      <div className="max-w-5xl mx-auto px-4 pt-6">
+        <BudgetWidget budget={budget} setBudget={setBudget} />
+      </div>
+
+      {/* Sticky Nav */}
+      <div className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm mt-0">
+        <div className="max-w-5xl mx-auto px-4 overflow-x-auto">
+          <div className="flex gap-1 py-2 whitespace-nowrap">
+            {navItems.map(n => (
+              <button key={n.id} onClick={() => scrollTo(n.id)} className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeNav === n.id ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+                {n.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 py-10 space-y-16">
+
+        {/* DIAGNOSTIC */}
+        <section id="diagnostic">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-slate-900">📊 Diagnostic — État des lieux</h2>
+            <p className="text-slate-500 mt-1 text-sm">Synthèse des performances historiques Google Ads + GA4 (oct. 2025 – fév. 2026)</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
+            {[
+              { label: "CTR actuel",          value: "10,87%", status: "good", target: "> 8%",    icon: "📈" },
+              { label: "CPC moyen",           value: "4,09 €", status: "warn", target: "< 3,50 €", icon: "💶" },
+              { label: "Taux de conversion",  value: "0,93%",  status: "bad",  target: "> 3%",    icon: "🎯" },
+              { label: "Coût / conversion",   value: "441 €",  status: "bad",  target: "< 80 €",  icon: "💸" },
+              { label: "Conversions / mois",  value: "< 1",    status: "bad",  target: "5 à 10",  icon: "✅" },
+            ].map((k, i) => (
+              <div key={i} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-center">
+                <div className="text-2xl mb-1">{k.icon}</div>
+                <div className="text-xl font-extrabold text-slate-900">{k.value}</div>
+                <div className="text-xs text-slate-500 mb-2">{k.label}</div>
+                <StatusBadge status={k.status} />
+                <div className="text-xs text-slate-400 mt-1">Objectif : {k.target}</div>
+              </div>
+            ))}
+          </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
+              <div className="font-bold text-emerald-800 mb-2">✅ Ce qui fonctionne</div>
+              <ul className="text-sm text-emerald-700 space-y-1">
+                <li>• CTR à 10,87% — excellent pour du Search</li>
+                <li>• Groupe Marque convertit à 4,35%</li>
+                <li>• Paid Search = 56% des sessions</li>
+                <li>• Page /devis : 39s d'engagement (meilleure)</li>
+              </ul>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+              <div className="font-bold text-red-800 mb-2">❌ Problèmes identifiés</div>
+              <ul className="text-sm text-red-700 space-y-1">
+                <li>• Taux de conv. 0,93% = rupture annonce/landing</li>
+                <li>• Coût/conversion : 441€ non viable</li>
+                <li>• Façade/Bardage : 0 conv. pour 173€ dépensés</li>
+                <li>• Durée d'engagement : 24s — site peu engageant</li>
+              </ul>
+            </div>
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
+              <div className="font-bold text-indigo-800 mb-2">🚀 Ce que le nouveau site change</div>
+              <ul className="text-sm text-indigo-700 space-y-1">
+                <li>• 4 landing pages dédiées par service</li>
+                <li>• CTA "Devis gratuit" visible dès le hero</li>
+                <li>• Arguments adaptés par cible (part./pro)</li>
+                <li>• Architecture SKAG possible</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* GOOGLE ADS */}
+        <section id="google">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">🔍 Stratégie Google Ads</h2>
+              <p className="text-slate-500 mt-1 text-sm">5 campagnes Search segmentées par service — landing pages dédiées</p>
+            </div>
+            <BudgetBadge monthly={googleMonthly} daily={googleDaily} bgClass="bg-indigo-600" textClass="text-indigo-200" />
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            {CAMPAIGNS_GOOGLE.map(c => {
+              const a = googleAlloc.find(x => x.id === c.id);
+              return <CampaignCard key={c.id} camp={c} type="google" allocDay={a?.daily ?? 0} allocMonth={a?.monthly ?? 0} active={a?.active ?? false} />;
+            })}
+          </div>
+        </section>
+
+        {/* META ADS */}
+        <section id="meta">
+          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">📘 Stratégie Meta Ads</h2>
+              <p className="text-slate-500 mt-1 text-sm">Facebook & Instagram — notoriété locale, génération de leads et retargeting</p>
+            </div>
+            <BudgetBadge monthly={metaMonthly} daily={metaDaily} bgClass="bg-blue-600" textClass="text-blue-200" />
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6 text-sm text-blue-800">
+            <strong>🎯 Logique complémentaire avec Google :</strong> Google capte la demande existante (intention déclarée). Meta crée la demande et travaille la notoriété locale — idéal pour un service encore peu connu du grand public comme le nettoyage par drone.
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            {CAMPAIGNS_META.map(c => {
+              const a = metaAlloc.find(x => x.id === c.id);
+              return <CampaignCard key={c.id} camp={c} type="meta" allocDay={a?.daily ?? 0} allocMonth={a?.monthly ?? 0} active={a?.active ?? false} />;
+            })}
+          </div>
+        </section>
+
+        {/* BUDGET */}
+        <section id="budget">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-slate-900">💶 Budget & Phases de déploiement</h2>
+            <p className="text-slate-500 mt-1 text-sm">Progression par paliers — mesure avant scaling</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4 mb-8">
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <div className="font-bold text-slate-800 mb-4 flex items-center gap-2"><span>🔍</span> Google Ads — Répartition calculée</div>
+              {googleAlloc.map((c, i) => (
+                <div key={i} className={`flex items-center justify-between text-sm py-1.5 border-b border-slate-100 last:border-0 ${!c.active ? "opacity-40" : ""}`}>
+                  <span className="text-slate-700">{c.icon} {c.name}</span>
+                  <div className="text-right">
+                    {c.active
+                      ? <><span className="font-semibold text-indigo-700">{c.daily} €/j</span><span className="text-slate-400 text-xs ml-1">({c.monthly} €/m)</span></>
+                      : <span className="text-slate-400 text-xs">⏸ En pause</span>
+                    }
+                  </div>
+                </div>
+              ))}
+              <div className="mt-3 flex justify-between font-bold text-slate-900 pt-2 border-t border-slate-200">
+                <span>Total</span>
+                <span className="text-indigo-600">{googleMonthly.toLocaleString("fr-FR")} €/mois</span>
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+              <div className="font-bold text-slate-800 mb-4 flex items-center gap-2"><span>📘</span> Meta Ads — Répartition calculée</div>
+              {metaAlloc.map((c, i) => (
+                <div key={i} className={`flex items-center justify-between text-sm py-1.5 border-b border-slate-100 last:border-0 ${!c.active ? "opacity-40" : ""}`}>
+                  <span className="text-slate-700">{c.icon} {c.name}</span>
+                  <div className="text-right">
+                    {c.active
+                      ? <><span className="font-semibold text-blue-700">{c.daily} €/j</span><span className="text-slate-400 text-xs ml-1">({c.monthly} €/m)</span></>
+                      : <span className="text-slate-400 text-xs">⏸ En pause</span>
+                    }
+                  </div>
+                </div>
+              ))}
+              <div className="mt-3 flex justify-between font-bold text-slate-900 pt-2 border-t border-slate-200">
+                <span>Total</span>
+                <span className="text-blue-600">{metaMonthly.toLocaleString("fr-FR")} €/mois</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 mb-8">
+            {PHASES.map((p, i) => (
+              <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  <div className={`${p.color} text-white text-xs font-bold px-3 py-1 rounded-full`}>{p.phase}</div>
+                  <span className="font-bold text-slate-900">{p.label}</span>
+                  <span className="text-slate-400 text-sm">{p.period}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {p.actions.map((a, j) => <span key={j} className="text-xs bg-slate-100 text-slate-700 px-3 py-1 rounded-full">{a}</span>)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-slate-800 text-white rounded-2xl p-5">
+            <div className="font-bold mb-3">📅 Saisonnalité — Recommandation budgétaire</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+              {[
+                ["Mars – Mai",   "🔺 +30%", "Haute saison",    "bg-red-500/30"],
+                ["Juin – Août",  "➡️ Normal","Saison standard", "bg-white/10"],
+                ["Sept – Nov",   "🔺 +30%", "Haute saison",    "bg-red-500/30"],
+                ["Déc – Fév",    "🔽 -30%", "Basse saison",    "bg-blue-500/20"],
+              ].map(([period, pct, label, bg], i) => (
+                <div key={i} className={`${bg} rounded-xl p-3`}>
+                  <div className="font-semibold text-sm">{period}</div>
+                  <div className="text-lg font-bold">{pct}</div>
+                  <div className="text-white/60 text-xs">{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* KPIS */}
+        <section id="kpis">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-slate-900">🎯 Objectifs & KPIs</h2>
+            <p className="text-slate-500 mt-1 text-sm">Indicateurs de performance à suivre sur 3 mois</p>
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm mb-6">
+            <table className="w-full text-sm bg-white">
+              <thead className="bg-slate-900 text-white">
+                <tr>
+                  <th className="text-left px-4 py-3 font-semibold">KPI</th>
+                  <th className="text-left px-4 py-3 font-semibold">Situation actuelle</th>
+                  <th className="text-left px-4 py-3 font-semibold">Objectif 3 mois</th>
+                  <th className="text-left px-4 py-3 font-semibold hidden md:table-cell">Levier</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ["CTR Search",          "10,87% ✅",  "> 8%",           "Maintenir la qualité des annonces"],
+                  ["CPC moyen",           "4,09 €",     "< 3,50 €",       "Quality Score + enchères optimisées"],
+                  ["Taux de conversion",  "0,93% ❌",   "> 3%",           "Nouveau site + landing pages dédiées"],
+                  ["Coût / conversion",   "~441 € ❌",  "< 80 €",         "Meilleure conv. + CPA cible activé"],
+                  ["Conversions / mois",  "< 1 ❌",     "5 à 10",         "Volume + taux de conversion"],
+                  ["CPL Meta",            "Non mesuré", "< 30 €",         "Lead Ads avec formulaire natif"],
+                  ["Fréquence Meta",      "Non mesuré", "< 3 / 7 jours",  "Renouveler les créatifs / mois"],
+                ].map(([kpi, current, target, lever], i) => (
+                  <tr key={i} className={`border-b border-slate-100 ${i % 2 === 0 ? "bg-white" : "bg-slate-50"}`}>
+                    <td className="px-4 py-3 font-medium text-slate-900">{kpi}</td>
+                    <td className="px-4 py-3 text-slate-600">{current}</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-700">{target}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs hidden md:table-cell">{lever}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl p-6">
+            <div className="font-bold text-lg mb-2">💡 La projection clé</div>
+            <p className="text-indigo-100 text-sm leading-relaxed mb-4">
+              Le levier principal est le <strong className="text-white">taux de conversion</strong>. Avec le nouveau site (landing pages dédiées + CTA visible dès le hero), passer de <strong className="text-white">0,93% à 3%+</strong> est très réaliste — ce qui ferait mécaniquement baisser le coût par conversion de <strong className="text-white">441€ à environ 55-60€</strong> avec le même budget Google Ads.
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-white/15 rounded-xl p-3">
+                <div className="text-2xl font-extrabold">0,93%</div>
+                <div className="text-xs text-indigo-200">Conv. actuelle</div>
+                <div className="text-xs text-indigo-300 mt-1">= 441 €/lead</div>
+              </div>
+              <div className="self-center text-3xl">→</div>
+              <div className="bg-white/25 rounded-xl p-3 ring-2 ring-white/40">
+                <div className="text-2xl font-extrabold">3%+</div>
+                <div className="text-xs text-indigo-200">Objectif 3 mois</div>
+                <div className="text-xs text-indigo-300 mt-1">≈ 60 €/lead</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <footer className="bg-slate-900 text-white/40 text-xs text-center py-5 mt-8">
+        Stratégie media préparée pour Le Drone et Vous · Basée sur GA4 + Google Ads historiques · 2026
+      </footer>
+    </div>
+  );
+}
+
+const container = document.getElementById('root');
+const root = ReactDOM.createRoot(container);
+root.render(React.createElement(App));
+  </script>
+</body>
+</html>
